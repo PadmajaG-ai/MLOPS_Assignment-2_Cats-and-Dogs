@@ -3,7 +3,7 @@ venv/
 env/
 
 # Dataset and processed data (too large for GitHub)
-data/
+data/processed/
 
 
 
