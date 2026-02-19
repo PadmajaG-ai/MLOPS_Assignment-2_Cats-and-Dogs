@@ -5,14 +5,12 @@ env/
 # Dataset and processed data (too large for GitHub)
 data/
 
-# Trained model weights (too large)
-models/
+
 
 # MLflow tracking data
 mlruns/
 
-# Plot artifacts
-artifacts/
+
 
 # Python cache
 __pycache__/
