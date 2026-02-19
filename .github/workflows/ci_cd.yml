@@ -103,8 +103,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install torch for dummy model creation
+        run: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
 
       - name: Create dummy model for smoke test
         run: |
