@@ -1,0 +1,29 @@
+# Virtual environment
+venv/
+env/
+
+# Dataset and processed data (too large for GitHub)
+data/
+
+# Trained model weights (too large)
+models/
+
+# MLflow tracking data
+mlruns/
+
+# Plot artifacts
+artifacts/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

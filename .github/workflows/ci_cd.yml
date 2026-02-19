@@ -1,0 +1,177 @@
+name: CI/CD Pipeline — Cats vs Dogs Classifier
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  IMAGE_NAME: cats-dogs-classifier
+  REGISTRY:   docker.io
+
+jobs:
+
+  # ───────────────────────────────────────────
+  # JOB 1: Run unit tests
+  # ───────────────────────────────────────────
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        run: pytest tests/test_pipeline.py -v --tb=short
+
+  # ───────────────────────────────────────────
+  # JOB 2: Build Docker image & push to Docker Hub
+  # Runs only on push to main (not on PRs)
+  # ───────────────────────────────────────────
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test          # only runs if tests pass
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "tag=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} .
+          docker tag \
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Print image info
+        run: |
+          echo "✅ Image pushed:"
+          echo "   ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}"
+          echo "   ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+
+  # ───────────────────────────────────────────
+  # JOB 3: Deploy via Docker Compose (CD)
+  # M4: pulls new image and restarts service
+  # ───────────────────────────────────────────
+  deploy:
+    name: Deploy with Docker Compose
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create dummy model for smoke test
+        run: |
+          mkdir -p models
+          python -c "
+          import torch, torch.nn as nn
+          class SimpleCNN(nn.Module):
+              def __init__(self):
+                  super().__init__()
+                  self.features = nn.Sequential(
+                      nn.Conv2d(3,32,3,padding=1), nn.BatchNorm2d(32),
+                      nn.ReLU(True), nn.MaxPool2d(2,2),
+                      nn.Conv2d(32,64,3,padding=1), nn.BatchNorm2d(64),
+                      nn.ReLU(True), nn.MaxPool2d(2,2),
+                      nn.Conv2d(64,128,3,padding=1), nn.BatchNorm2d(128),
+                      nn.ReLU(True), nn.MaxPool2d(2,2),
+                      nn.Conv2d(128,128,3,padding=1), nn.BatchNorm2d(128),
+                      nn.ReLU(True), nn.MaxPool2d(2,2),
+                  )
+                  self.classifier = nn.Sequential(
+                      nn.Dropout(0.5), nn.Linear(128*14*14,512),
+                      nn.ReLU(True), nn.Dropout(0.3), nn.Linear(512,2),
+                  )
+              def forward(self,x):
+                  x=self.features(x); x=x.view(x.size(0),-1); return self.classifier(x)
+          m = SimpleCNN()
+          torch.save(m.state_dict(), 'models/cats_dogs_cnn.pt')
+          print('Dummy model saved.')
+          "
+
+      - name: Start service with Docker Compose
+        run: |
+          DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }} \
+          IMAGE_NAME=${{ env.IMAGE_NAME }} \
+          docker compose up -d
+
+      - name: Wait for service to be ready
+        run: sleep 15
+
+      - name: Smoke test — health check
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health)
+          echo "Health check HTTP status: $RESPONSE"
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Health check failed!"
+            docker compose logs
+            exit 1
+          fi
+          echo "✅ Health check passed!"
+
+      - name: Smoke test — prediction
+        run: |
+          # Create a small test image (plain white JPEG)
+          python -c "
+          from PIL import Image
+          img = Image.new('RGB', (224, 224), color=(200, 200, 200))
+          img.save('/tmp/test_image.jpg')
+          print('Test image created.')
+          "
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST http://localhost:8000/predict \
+            -F "file=@/tmp/test_image.jpg")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+          echo "Predict response: $BODY"
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Prediction smoke test failed!"
+            docker compose logs
+            exit 1
+          fi
+          echo "✅ Prediction smoke test passed!"
+
+      - name: Tear down
+        if: always()
+        run: docker compose down

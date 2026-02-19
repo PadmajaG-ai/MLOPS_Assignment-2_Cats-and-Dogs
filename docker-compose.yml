@@ -1,0 +1,20 @@
+# M4: CD Pipeline & Deployment
+# Runs the cats-dogs inference service via Docker Compose
+
+services:
+  cats-dogs-classifier:
+    image: ${DOCKER_USERNAME}/cats-dogs-classifier:latest
+    container_name: cats-dogs-classifier
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=models/cats_dogs_cnn.pt
+    volumes:
+      - ./models:/app/models   # mount local models folder into container
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
