@@ -2,7 +2,7 @@
 
 > End-to-end MLOps pipeline for binary image classification — MLOps Assignment 2
 > Group 31
->Youtube demo video : https://youtu.be/CuXatPovyQU
+>> Youtube demo video : https://youtu.be/CuXatPovyQU
 
 ---
 
