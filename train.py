@@ -8,7 +8,6 @@ M1: Model Development & Experiment Tracking
 """
 
 import os
-import zipfile
 import shutil
 import random
 import time
@@ -24,11 +23,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import mlflow
 import mlflow.pytorch
+import kagglehub
 
 # ─────────────────────────────────────────────
 # 0. CONFIG  (change anything here freely)
 # ─────────────────────────────────────────────
-KAGGLE_DATASET   = "Cats and Dogs Classification Dataset"   # kaggle dataset slug
+KAGGLE_DATASET   = "bhavikjikadara/dog-and-cat-classification-dataset"   # kaggle
 DATA_DIR         = "data"
 RAW_ZIP          = os.path.join(DATA_DIR, "dogs-vs-cats.zip")
 TRAIN_DIR        = os.path.join(DATA_DIR, "train")
@@ -64,19 +64,18 @@ def download_data():
         return
 
     print("Downloading dataset from Kaggle...")
-    os.system(f"kaggle datasets download -d {KAGGLE_DATASET} -p {DATA_DIR}")
-
-    # Find the downloaded zip (kaggle names it after the dataset slug)
-    zip_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".zip")]
-    if not zip_files:
-        raise FileNotFoundError("Kaggle download failed. Check your kaggle.json credentials.")
-
-    zip_path = os.path.join(DATA_DIR, zip_files[0])
-    print(f"Extracting {zip_path}...")
-    with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(DATA_DIR)
-    print("Extraction complete.")
-
+    path = kagglehub.dataset_download(KAGGLE_DATASET)
+    # Copy downloaded files into DATA_DIR so prepare_data() finds them
+    for name in os.listdir(path):
+        src = os.path.join(path, name)
+        dst = os.path.join(DATA_DIR, name)
+        if os.path.isdir(src):
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+    print("Dataset ready in", DATA_DIR)
 
 # ─────────────────────────────────────────────
 # 2. ORGANISE INTO train / val / test FOLDERS
