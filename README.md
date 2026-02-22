@@ -1,6 +1,8 @@
 # Cats vs Dogs MLOps Pipeline
 
-> End-to-end MLOps pipeline for binary image classification — BITS Pilani MLOps Assignment 2 (S1-25_AIMLCZG523)
+> End-to-end MLOps pipeline for binary image classification — MLOps Assignment 2
+> Group 31
+>Youtube demo video : https://youtu.be/CuXatPovyQU
 
 ---
 
